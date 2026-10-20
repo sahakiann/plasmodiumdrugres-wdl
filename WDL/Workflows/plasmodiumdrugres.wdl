@@ -10,15 +10,15 @@ import "../Subworkflows/merge_and_concat.wdl" as merge_and_concat_wf
 import "../Tasks/split_table_by_population_map/split_table_by_population_map.wdl" as split_table_by_population_map_t
 import "../Tasks/move_outputs/move_outputs.wdl" as move_outputs_t
 import "../Tasks/utils/fail.wdl" as fail_t
+import "../Tasks/make_panel_bed/make_panel_bed.wdl" as make_panel_bed
+import "../Tasks/convert_allele_table/convert_allele_table.wdl" as convert_allele_table
+import "../Tasks/resmarkers_to_terra/resmarkers_to_terra.wdl" as resmarkers_to_terra
 
 workflow plasmodiumdrugres {
    input {
      # Exactly one of these must be provided
      File? pmo
-     File? allele_table
-
-     # Required for translation and for allele_table mode
-     File? panel_info_bed
+     File filtered_allele_data
 
      File loci_of_interest_bed
      File loci_groups
@@ -43,6 +43,12 @@ workflow plasmodiumdrugres {
      # Optional: Terra workspace bucket id (e.g. fc-… from gs://fc-…/…). Use when Cromwell
      # localizes File paths and auto-detection from gs:// no longer applies.
      String? workspace_bucket
+
+     File amplicon_info
+     File reference
+
+     String billing_project
+     String workspace_name
    }
 
    String outdir_sanitized = sub(outdir, "^[A-Za-z0-9_-]+$", "MATCH")
@@ -55,11 +61,22 @@ workflow plasmodiumdrugres {
      }
    }
 
+   call make_panel_bed.make_panel_bed {
+        input:
+        amplicon_info_tsv = amplicon_info,
+        reference_fasta = reference
+   }
+
+    call convert_allele_table.convert_allele_table {
+        input:
+            allele_table_tsv = filtered_allele_data
+    }
+
    call pipeline_initialisation_wf.pipeline_initialisation as t_001_init {
      input:
        pmo = pmo,
-       allele_table = allele_table,
-       panel_info_bed = panel_info_bed,
+       allele_table = convert_allele_table.converted_allele_table,
+       panel_info_bed = make_panel_bed.panel_bed,
        population_assignment = population_assignment,
        pmo_population_fields = pmo_population_fields,
        pmo_population_separator = pmo_population_separator,
@@ -185,6 +202,13 @@ workflow plasmodiumdrugres {
        use_gcs_staging = move_use_gcs,
        fc_workspace_bucket = move_fc_bucket
    }
+
+   call resmarkers_to_terra.resmarkers_to_terra as resmarkers_to_terra {
+   input:
+      collapsed_amino_acid_calls = t_002_translate_loci.translate_loci_of_interest_output_collapsed_o,
+      billing_project = billing_project,
+      workspace_name = workspace_name
+     }
 
    output {
      String ml_summary = t_move_outputs.ml_summary_uri
