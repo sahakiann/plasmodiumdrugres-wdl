@@ -106,5 +106,3 @@ As its last step, the workflow runs the `resmarkers_to_terra` task (`python/resm
 - This step produces no workflow output; the same table is also written to `sample_resmarkers.tsv` in the task's execution directory.
 
 Per-population merge artifacts and intermediate `translated_loci/` paths are still computed inside the run but are **not** listed as workflow outputs; use the staged URIs above for downloads and downstream tooling.
-
-
